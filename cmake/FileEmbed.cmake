@@ -33,7 +33,7 @@ function(FileEmbedGenerate file generated_c)
     set(output_filename "${base_filename}.c")
     string(MAKE_C_IDENTIFIER ${base_filename} c_name)
     file(READ ${file} content HEX)
-    message(${content})
+#    message(${content})
 
     # Separate into individual bytes.
     string(REGEX MATCHALL "([A-Fa-f0-9][A-Fa-f0-9])" SEPARATED_HEX ${content})

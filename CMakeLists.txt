@@ -21,7 +21,10 @@ add_executable(RunFleanceRun src/main.c src/Sprite.c src/Sprite.h src/libs/stbtt
 include(cmake/FileEmbed.cmake)
 FileEmbedSetup()
 FileEmbedAdd(${CMAKE_SOURCE_DIR}/radix-mountain_king.mod)
-FileEmbedAdd(${CMAKE_SOURCE_DIR}/fleance-sheet.png)
+FileEmbedAdd(${CMAKE_SOURCE_DIR}/fleance-crying-sheet.png)
+FileEmbedAdd(${CMAKE_SOURCE_DIR}/background-sheet.png)
+FileEmbedAdd(${CMAKE_SOURCE_DIR}/rock.png)
+FileEmbedAdd(${CMAKE_SOURCE_DIR}/branch.png)
 FileEmbedAdd(${CMAKE_SOURCE_DIR}/ChronoTrigger.ttf)
 
 target_link_libraries(RunFleanceRun file_embed portaudio openmpt SDL2main SDL2_ttf SDL2 ${REQUIRED_LIBS})

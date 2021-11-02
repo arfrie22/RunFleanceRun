@@ -10,8 +10,12 @@
 #define STB_RECT_PACK_IMPLEMENTATION
 #define STBTTF_IMPLEMENTATION
 #include <stbttf.h>
+#include <pthread.h>
 
-#include <fleance_sheet_png.h>
+#include <fleance_crying_sheet_png.h>
+#include <background_sheet_png.h>
+#include <rock_png.h>
+#include <branch_png.h>
 #include <radix_mountain_king_mod.h>
 #include <ChronoTrigger_ttf.h>
 #include "Sprite.h"
@@ -27,16 +31,36 @@
 
 #include <portaudio.h>
 
+#define FRAMERATE 30
+#define FRAMEDELTA (1000/FRAMERATE)
+
 #define BUFFERSIZE 480
 #define SAMPLERATE 48000
+
+typedef enum State {
+    TITLE,
+    PLAY,
+    GAMEOVER,
+    WIN
+} State;
+
+#define WIDTH 800
+#define HEIGHT 600
 
 static int16_t left[BUFFERSIZE];
 static int16_t right[BUFFERSIZE];
 static int16_t * const buffers[2] = { left, right };
 static int16_t interleaved_buffer[BUFFERSIZE * 2];
 static int is_interleaved = 0;
+State state;
+#define PI 3.141592654
 
+typedef struct Obstacle {
 
+} Obstacle;
+
+#define OBSTACLECOUNT 10
+static Obstacle obstacles[OBSTACLECOUNT];
 
 static void libopenmpt_example_logfunc( const char * message, void * userdata ) {
     (void)userdata;
@@ -79,32 +103,15 @@ static void libopenmpt_example_print_error( const char * func_name, int mod_err,
     }
 }
 
-int main(int argc, char** argv) {
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0) {
-        fprintf( stderr, "Error initializing SDL: %s\n", SDL_GetError() );
-        return 1;
-    }
+typedef struct MusicArg {
+    openmpt_module ** mod;
+    uint8_t * paused;
+    uint8_t * running;
+    uint8_t * initialized;
+} MusicArg;
 
-    SDL_Window* window = SDL_CreateWindow("Run Fleance Run", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 800, 600, SDL_WINDOW_OPENGL);
-    if (window == NULL) {
-        fprintf( stderr, "Error creating window: %s\n", SDL_GetError() );
-        return 1;
-    }
-
-    SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-    if (window == NULL) {
-        fprintf( stderr, "Error creating window: %s\n", SDL_GetError() );
-        return 1;
-    }
-
-    int w,h,n;
-    unsigned char *fleance_data = stbi_load_from_memory(fleance_sheet_png_data, fleance_sheet_png_size, &w, &h, &n, 0);
-    SDL_Texture* fleance_texture = STBIMG_CreateTexture(renderer, fleance_data, w, h, n);
-    Animation* fleance_crying = CreateAnimation(fleance_texture, 30, 21, w, h);
-    Sprite* fleance_sprite = CreateSprite(fleance_crying);
-    STBTTF_Font* font = STBTTF_OpenFontMem(renderer, ChronoTrigger_ttf_data, ChronoTrigger_ttf_size, 32);
-
-    free(fleance_data);
+void *music_thread(void *vargp) {
+    MusicArg args = *(MusicArg*)vargp;
 
     openmpt_module * mod = 0;
     int mod_err = OPENMPT_ERROR_OK;
@@ -118,14 +125,14 @@ int main(int argc, char** argv) {
         libopenmpt_example_print_error( "openmpt_module_create2()", mod_err, mod_err_str );
         openmpt_free_string( mod_err_str );
         mod_err_str = NULL;
-        return 1;
+        *args.running = 0;
     }
     openmpt_module_set_error_func( mod, NULL, NULL );
 
     pa_error = Pa_Initialize();
     if ( pa_error != paNoError ) {
         fprintf( stderr, "Error: %s\n", "Pa_Initialize() failed." );
-        return 1;
+        *args.running = 0;
     }
 
     pa_error = Pa_OpenDefaultStream( &stream, 0, 2, paInt16 | paNonInterleaved, SAMPLERATE, paFramesPerBufferUnspecified, NULL, NULL );
@@ -135,25 +142,149 @@ int main(int argc, char** argv) {
     }
     if ( pa_error != paNoError ) {
         fprintf( stderr, "Error: %s\n", "Pa_OpenStream() failed." );
-        return 1;
+        *args.running = 0;
     }
     if ( !stream ) {
         fprintf( stderr, "Error: %s\n", "Pa_OpenStream() failed." );
-        return 1;
+        *args.running = 0;
     }
 
     pa_error = Pa_StartStream( stream );
     if ( pa_error != paNoError ) {
         fprintf( stderr, "Error: %s\n", "Pa_StartStream() failed." );
+        *args.running = 0;
+    }
+
+    *args.mod = mod;
+    *args.initialized = 1;
+
+    while (1) {
+        if (state == PLAY && !*args.paused) {
+            openmpt_module_error_clear(mod);
+            count = is_interleaved ? openmpt_module_read_interleaved_stereo(mod, SAMPLERATE, BUFFERSIZE,
+                                                                                  interleaved_buffer)
+                                         : openmpt_module_read_stereo(mod, SAMPLERATE, BUFFERSIZE, left, right);
+            mod_err = openmpt_module_error_get_last(mod);
+            mod_err_str = openmpt_module_error_get_last_message(mod);
+            if (mod_err != OPENMPT_ERROR_OK) {
+                libopenmpt_example_print_error("openmpt_module_read_stereo()", mod_err, mod_err_str);
+                openmpt_free_string(mod_err_str);
+                mod_err_str = NULL;
+            }
+            fprintf(stdout, "Position %f, Length %f\n", openmpt_module_get_position_seconds(mod), openmpt_module_get_duration_seconds(mod));
+            if (count == 0) {
+                if (openmpt_module_get_position_seconds(mod) >= openmpt_module_get_duration_seconds(mod)) {
+                    state = WIN;
+                    break;
+                } else {
+                    openmpt_module_set_position_seconds(mod, 0);
+                }
+            } else {
+
+                pa_error = is_interleaved ? Pa_WriteStream(stream, interleaved_buffer,
+                                                                 (unsigned long) count)
+                                                : Pa_WriteStream(stream, buffers, (unsigned long) count);
+                if (pa_error == paOutputUnderflowed) {
+                    pa_error = paNoError;
+                }
+                if (pa_error != paNoError) {
+                    fprintf(stderr, "Error: %s\n", "Pa_WriteStream() failed.");
+                    *args.running = 0;
+                    pthread_exit(NULL);
+                }
+            }
+        }
+    }
+    pthread_exit(NULL);
+}
+
+int main(int argc, char** argv) {
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0) {
+        fprintf( stderr, "Error initializing SDL: %s\n", SDL_GetError() );
         return 1;
     }
 
-    uint8_t  running = 1;
+    SDL_Window* window = SDL_CreateWindow("Run Fleance Run", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WIDTH, HEIGHT+25, SDL_WINDOW_OPENGL);
+    if (window == NULL) {
+        fprintf( stderr, "Error creating window: %s\n", SDL_GetError() );
+        return 1;
+    }
+
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+    if (window == NULL) {
+        fprintf( stderr, "Error creating window: %s\n", SDL_GetError() );
+        return 1;
+    }
+
+    int w,h,n;
+    unsigned char *fleance_crying_data = stbi_load_from_memory(fleance_crying_sheet_png_data, fleance_crying_sheet_png_size, &w, &h, &n, 0);
+    SDL_Texture* fleance_crying_texture = STBIMG_CreateTexture(renderer, fleance_crying_data, w, h, n);
+    Animation* fleance_crying_animation = CreateAnimation(fleance_crying_texture, 1, 21, w, h);
+    Sprite* fleance_sprite = CreateSprite(fleance_crying_animation, 64, 128);
+    free(fleance_crying_data);
+
+    unsigned char *background_data = stbi_load_from_memory(background_sheet_png_data, background_sheet_png_size, &w, &h, &n, 0);
+    SDL_Texture* background_texture = STBIMG_CreateTexture(renderer, background_data, w, h, n);
+    Animation* background_animation = CreateAnimation(background_texture, 5, 3, w, h);
+    Sprite* background_sprite = CreateSprite(background_animation, WIDTH, HEIGHT);
+    free(background_data);
+
+    fprintf(stderr, "CHANGE PLACEHOLDER OBS");
+    unsigned char *rock_data = stbi_load_from_memory(rock_png_data, rock_png_size, &w, &h, &n, 0);
+    SDL_Texture* rock_texture = STBIMG_CreateTexture(renderer, rock_data, w, h, n);
+    Animation* rock_animation = CreateAnimation(rock_texture, 5, 1, w, h);
+    Sprite* rock_sprite = CreateSprite(rock_animation, 32, 32);
+    rock_sprite->speed = 10;
+    free(rock_data);
+
+
+    STBTTF_Font* font = STBTTF_OpenFontMem(renderer, ChronoTrigger_ttf_data, ChronoTrigger_ttf_size, 32);
+    openmpt_module * mod = 0;
+    uint8_t paused, running, initialized;
+    initialized = 0;
+    running = 1;
+    paused = 0;
+
+    MusicArg args = {
+            .mod = &mod,
+            .paused = &paused,
+            .running = &running,
+            .initialized = &initialized
+    };
+
+    pthread_t tid;
+    pthread_create(&tid, NULL, music_thread, (void *)&args);
+
+    int prevTime, curTime, deltaTime;
+    double pathAngle, pathComp;
+    Start:
+    curTime = SDL_GetTicks();
+    prevTime = curTime;
+    while (!initialized) {}
+    openmpt_module_set_position_seconds(mod, 0);
+    state = TITLE;
+    running = 1;
+    paused = 0;
+    fleance_sprite->rect.x = (WIDTH - fleance_sprite->rect.w)/2;
+    fleance_sprite->rect.y = (HEIGHT - fleance_sprite->rect.h);
+    pathAngle = atan2((7.0*HEIGHT)/8.0, WIDTH/3.0);
+    pathComp = (PI/2) - pathAngle;
+
+    rock_sprite->rect.x = (WIDTH - rock_sprite->rect.w)/2;
+    rock_sprite->rect.y = HEIGHT/8;
+    uint8_t lane = 1;
+
     while (running) {
+        curTime = SDL_GetTicks();
+        deltaTime = curTime-prevTime;
+        if (deltaTime < FRAMEDELTA) {
+            SDL_Delay(FRAMEDELTA - deltaTime);
+        }
+        prevTime = SDL_GetTicks();
+
         SDL_Event e;
         if (SDL_PollEvent(&e)) {
             switch(e.type) {
-
                 case SDL_QUIT:
                     running = 0;
                     break;
@@ -169,59 +300,136 @@ int main(int argc, char** argv) {
                     switch (e.key.keysym.sym) {
                         case SDLK_ESCAPE:
                         case SDLK_q:
-                            running = 0;
+                            if (state == TITLE) {
+                                running = 0;
+                            } else {
+                                paused = !paused;
+                            }
                             break;
 
                         case SDLK_r:
-                            openmpt_module_set_position_seconds(mod, 0);
+                            goto Start;
+                            break;
+                    }
+
+                    switch (state) {
+                        case TITLE:
+                            if (e.key.keysym.sym != SDLK_r) {
+                                state = PLAY;
+                                openmpt_module_set_position_seconds(mod, 0);
+                            }
+                            break;
+                        case PLAY:
+                            switch (e.key.keysym.sym) {
+                                case SDLK_LEFT:
+                                case SDLK_a:
+                                    if (lane > 0) {
+                                        lane -= 1;
+                                        fleance_sprite->rect.x -= WIDTH/3;
+                                    }
+                                    break;
+
+                                case SDLK_RIGHT:
+                                case SDLK_d:
+                                    if (lane < 2) {
+                                        lane += 1;
+                                        fleance_sprite->rect.x += WIDTH/3;
+                                    }
+                                    break;
+                            }
+                            break;
+                        case GAMEOVER:
+                            break;
+                        case WIN:
                             break;
                     }
                     break;
             }
         }
 
-        fleance_sprite->animation->frame += 1;
-        if (fleance_sprite->animation->frame >= fleance_sprite->animation->frame_count) fleance_sprite->animation->frame = 0;
+        if (!paused) {
+            if (state == TITLE || state == PLAY) {
+                if (TickSprite(fleance_sprite)) {
+                    IncFrame(fleance_sprite);
+                }
+            }
 
-        SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
+            if (state == PLAY) {
+                if (TickSprite(background_sprite)) {
+                    IncFrame(background_sprite);
+                }
+
+                if (TickSprite(rock_sprite)) {
+                    double multiplier = 4;
+                    multiplier *= ((8.0*rock_sprite->rect.y) - HEIGHT)/(7.0*HEIGHT);
+                    multiplier += 1;
+                    rock_sprite->rect.h = ceil(multiplier*16);
+                    rock_sprite->rect.w = ceil(multiplier*16);
+
+                    rock_sprite->rect.y += (rock_sprite->speed) * multiplier;
+                    rock_sprite->rect.x -= (rock_sprite->speed * sin(pathComp) / sin(pathAngle)) * multiplier;
+                }
+            }
+        }
+
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
-        SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
+        RenderSprite(renderer, background_sprite);
+
+        float ws;
+        switch (state) {
+            case TITLE:
+                SDL_SetRenderDrawColor(renderer, 128, 0, 0, 255);
+                ws = STBTTF_MeasureText(font, "Press any key to begin");
+                STBTTF_RenderText(renderer, font, 400 - (ws / 2), 300, "Press any key to begin");
+                break;
+            case PLAY:
+                RenderSprite(renderer, rock_sprite);
+
+                if (paused) {
+                    SDL_SetRenderDrawColor(renderer, 128, 0, 0, 255);
+                    ws = STBTTF_MeasureText(font, "Paused");
+                    STBTTF_RenderText(renderer, font, 400 - (ws / 2), 300, "Paused");
+                }
+
+                SDL_FRect progress;
+                progress.x = 0;
+                progress.y = HEIGHT;
+                progress.h = 25;
+                progress.w = WIDTH;
+                SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+                SDL_RenderFillRectF(renderer, &progress);
+                progress.w = WIDTH * (openmpt_module_get_position_seconds(mod)/openmpt_module_get_duration_seconds(mod));
+                SDL_SetRenderDrawColor(renderer, 128, 0, 0, 255);
+                SDL_RenderFillRectF(renderer, &progress);
+                break;
+            case GAMEOVER:
+                SDL_SetRenderDrawColor(renderer, 128, 0, 0, 255);
+                ws = STBTTF_MeasureText(font, "GAME OVER!");
+                STBTTF_RenderText(renderer, font, 400 - (ws / 2), 300, "GAME OVER!");
+                break;
+            case WIN:
+                SDL_SetRenderDrawColor(renderer, 128, 0, 0, 255);
+                ws = STBTTF_MeasureText(font, "YOU WIN!");
+                STBTTF_RenderText(renderer, font, 400 - (ws / 2), 300, "YOU WIN!");
+                break;
+        }
 
         RenderSprite(renderer, fleance_sprite);
 
-        SDL_SetRenderDrawColor(renderer, 128, 0, 0, 255);
-        STBTTF_RenderText(renderer, font, 50, 50, "Press any key to begin");
-
         SDL_RenderPresent(renderer);
-
-        openmpt_module_error_clear( mod );
-        count = is_interleaved ? openmpt_module_read_interleaved_stereo( mod, SAMPLERATE, BUFFERSIZE, interleaved_buffer ) : openmpt_module_read_stereo( mod, SAMPLERATE, BUFFERSIZE, left, right );
-        mod_err = openmpt_module_error_get_last( mod );
-        mod_err_str = openmpt_module_error_get_last_message( mod );
-        if ( mod_err != OPENMPT_ERROR_OK ) {
-            libopenmpt_example_print_error( "openmpt_module_read_stereo()", mod_err, mod_err_str );
-            openmpt_free_string( mod_err_str );
-            mod_err_str = NULL;
-        }
-        if ( count == 0 ) {
-            break;
-        }
-
-        pa_error = is_interleaved ? Pa_WriteStream( stream, interleaved_buffer, (unsigned long)count ) : Pa_WriteStream( stream, buffers, (unsigned long)count );
-        if ( pa_error == paOutputUnderflowed ) {
-            pa_error = paNoError;
-        }
-        if ( pa_error != paNoError ) {
-            fprintf( stderr, "Error: %s\n", "Pa_WriteStream() failed." );
-            return 1;
-        }
     }
 
-    SDL_DestroyTexture(fleance_texture);
+    pthread_cancel(tid);
+    DestroyAnimation(fleance_crying_animation);
+    DestroySprite(fleance_sprite);
+    DestroyAnimation(background_animation);
+    DestroySprite(background_sprite);
+
+    STBTTF_CloseFont(font);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
 
-//    stbir_resize();
     return 0;
 }
