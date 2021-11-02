@@ -47,6 +47,24 @@ typedef enum State {
 #define WIDTH 800
 #define HEIGHT 600
 
+
+#define QUOTECOUNT 13
+static char* quotes[] = {
+        "Fair is foul, and foul is fair",
+        "For them the gracious Duncan have I murdered,  put rancors in the vessel of my peace",
+        "Creeps in this petty pace from day to day to the last syllable of recorded time",
+        "The power of man, for none of woman born  Shall harm Macbeth",
+        "Thou shalt get kings, though thou be none",
+        "Your children shall be kings",
+        "O treachery! Fly, good Fleance, fly, fly, fly!",
+        "Most royal sir, Fleance is ’scaped",
+        "Whom you may say, if ’t please you, Fleance killed,  For Fleance fled",
+        "What ’twere to kill a father. So should Fleance",
+        "Lesser than Macbeth and greater",
+        "Not so happy, yet much happier",
+        "Here lay Duncan,  his silver skin laced with his golden blood"
+};
+
 static int16_t left[BUFFERSIZE];
 static int16_t right[BUFFERSIZE];
 static int16_t * const buffers[2] = { left, right };
@@ -56,8 +74,20 @@ State state;
 #define PI 3.141592654
 
 typedef struct Obstacle {
-
+    Sprite * sprite;
+    uint8_t lane;
+    uint8_t speed;
 } Obstacle;
+
+typedef struct QStat {
+    uint8_t quote_val;
+    char* quote;
+    uint8_t side;
+    uint8_t speed;
+    uint8_t next_quote;
+    uint8_t has_quote;
+
+} QStat;
 
 #define OBSTACLECOUNT 10
 static Obstacle obstacles[OBSTACLECOUNT];
@@ -171,7 +201,8 @@ void *music_thread(void *vargp) {
                 openmpt_free_string(mod_err_str);
                 mod_err_str = NULL;
             }
-            fprintf(stdout, "Position %f, Length %f\n", openmpt_module_get_position_seconds(mod), openmpt_module_get_duration_seconds(mod));
+//            fprintf(stdout, "Position %f, Length %f\n", openmpt_module_get_position_seconds(mod), openmpt_module_get_duration_seconds(mod));
+
             if (count == 0) {
                 if (openmpt_module_get_position_seconds(mod) >= openmpt_module_get_duration_seconds(mod)) {
                     state = WIN;
@@ -229,16 +260,22 @@ int main(int argc, char** argv) {
     Sprite* background_sprite = CreateSprite(background_animation, WIDTH, HEIGHT);
     free(background_data);
 
-    fprintf(stderr, "CHANGE PLACEHOLDER OBS");
+    fprintf(stderr, "CHANGE PLACEHOLDER OBJs");
     unsigned char *rock_data = stbi_load_from_memory(rock_png_data, rock_png_size, &w, &h, &n, 0);
     SDL_Texture* rock_texture = STBIMG_CreateTexture(renderer, rock_data, w, h, n);
+    unsigned char *branch_data = stbi_load_from_memory(branch_png_data, branch_png_size, &w, &h, &n, 0);
+    SDL_Texture* branch_texture = STBIMG_CreateTexture(renderer, branch_data, w, h, n);
+
     Animation* rock_animation = CreateAnimation(rock_texture, 5, 1, w, h);
     Sprite* rock_sprite = CreateSprite(rock_animation, 32, 32);
     rock_sprite->speed = 10;
     free(rock_data);
 
+    time_t t;
+    srand((unsigned) time(&t));
 
     STBTTF_Font* font = STBTTF_OpenFontMem(renderer, ChronoTrigger_ttf_data, ChronoTrigger_ttf_size, 32);
+    STBTTF_Font* quoteFont = STBTTF_OpenFontMem(renderer, ChronoTrigger_ttf_data, ChronoTrigger_ttf_size, 16);
     openmpt_module * mod = 0;
     uint8_t paused, running, initialized;
     initialized = 0;
@@ -258,6 +295,7 @@ int main(int argc, char** argv) {
     int prevTime, curTime, deltaTime;
     double pathAngle, pathComp;
     Start:
+    // Lol will hang after 43 days
     curTime = SDL_GetTicks();
     prevTime = curTime;
     while (!initialized) {}
@@ -284,6 +322,7 @@ int main(int argc, char** argv) {
 
         SDL_Event e;
         if (SDL_PollEvent(&e)) {
+            rand();
             switch(e.type) {
                 case SDL_QUIT:
                     running = 0;
@@ -402,6 +441,18 @@ int main(int argc, char** argv) {
                 progress.w = WIDTH * (openmpt_module_get_position_seconds(mod)/openmpt_module_get_duration_seconds(mod));
                 SDL_SetRenderDrawColor(renderer, 128, 0, 0, 255);
                 SDL_RenderFillRectF(renderer, &progress);
+
+                // TODO text
+                uint8_t quote = rand() % QUOTECOUNT;
+                if (quote < 3) {
+                    SDL_SetRenderDrawColor(renderer, 255, 0, 0, 127);
+                } else {
+                    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 63);
+                }
+                ws = STBTTF_MeasureText(quoteFont, quotes[quote]);
+
+                if (qStat)
+                STBTTF_RenderText(renderer, quoteFont, 400 - (ws / 2), 300, quotes[quote]);
                 break;
             case GAMEOVER:
                 SDL_SetRenderDrawColor(renderer, 128, 0, 0, 255);
@@ -427,6 +478,7 @@ int main(int argc, char** argv) {
     DestroySprite(background_sprite);
 
     STBTTF_CloseFont(font);
+    STBTTF_CloseFont(quoteFont);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
