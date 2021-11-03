@@ -13,6 +13,7 @@
 #include <pthread.h>
 
 #include <fleance_crying_sheet_png.h>
+#include <fleance_running_sheet_png.h>
 #include <background_sheet_png.h>
 #include <rock_png.h>
 #include <branch_png.h>
@@ -250,7 +251,10 @@ int main(int argc, char** argv) {
     int w,h,n;
     unsigned char *fleance_crying_data = stbi_load_from_memory(fleance_crying_sheet_png_data, fleance_crying_sheet_png_size, &w, &h, &n, 0);
     SDL_Texture* fleance_crying_texture = STBIMG_CreateTexture(renderer, fleance_crying_data, w, h, n);
-    Animation* fleance_crying_animation = CreateAnimation(fleance_crying_texture, 1, 21, w, h);
+    Animation* fleance_crying_animation = CreateAnimation(fleance_crying_texture, 4, 12, w, h);
+    unsigned char *fleance_running_data = stbi_load_from_memory(fleance_running_sheet_png_data, fleance_running_sheet_png_size, &w, &h, &n, 0);
+    SDL_Texture* fleance_running_texture = STBIMG_CreateTexture(renderer, fleance_running_data, w, h, n);
+    Animation* fleance_running_animation = CreateAnimation(fleance_running_texture, 2, 7, w, h);
     Sprite* fleance_sprite = CreateSprite(fleance_crying_animation, 64, 128);
     free(fleance_crying_data);
 
@@ -260,7 +264,6 @@ int main(int argc, char** argv) {
     Sprite* background_sprite = CreateSprite(background_animation, WIDTH, HEIGHT);
     free(background_data);
 
-    fprintf(stderr, "CHANGE PLACEHOLDER OBJs");
     unsigned char *rock_data = stbi_load_from_memory(rock_png_data, rock_png_size, &w, &h, &n, 0);
     SDL_Texture* rock_texture = STBIMG_CreateTexture(renderer, rock_data, w, h, n);
     unsigned char *branch_data = stbi_load_from_memory(branch_png_data, branch_png_size, &w, &h, &n, 0);
@@ -303,6 +306,7 @@ int main(int argc, char** argv) {
     state = TITLE;
     running = 1;
     paused = 0;
+    fleance_sprite->animation = fleance_crying_animation;
     fleance_sprite->rect.x = (WIDTH - fleance_sprite->rect.w)/2;
     fleance_sprite->rect.y = (HEIGHT - fleance_sprite->rect.h);
     pathAngle = atan2((7.0*HEIGHT)/8.0, WIDTH/3.0);
@@ -354,6 +358,7 @@ int main(int argc, char** argv) {
                     switch (state) {
                         case TITLE:
                             if (e.key.keysym.sym != SDLK_r) {
+                                fleance_sprite->animation = fleance_running_animation;
                                 state = PLAY;
                                 openmpt_module_set_position_seconds(mod, 0);
                             }
@@ -451,7 +456,7 @@ int main(int argc, char** argv) {
                 }
                 ws = STBTTF_MeasureText(quoteFont, quotes[quote]);
 
-                if (qStat)
+//                if (qStat)
                 STBTTF_RenderText(renderer, quoteFont, 400 - (ws / 2), 300, quotes[quote]);
                 break;
             case GAMEOVER:
