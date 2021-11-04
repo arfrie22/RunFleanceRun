@@ -84,11 +84,15 @@ typedef struct QStat {
     uint8_t quote_val;
     char* quote;
     uint8_t side;
-    uint8_t speed;
-    uint8_t next_quote;
+    float speed;
+    float period;
+    float amplitude;
+    uint32_t next_quote;
     uint8_t has_quote;
-
+    uint32_t timer;
 } QStat;
+
+QStat * qStat;
 
 #define OBSTACLECOUNT 10
 static Obstacle obstacles[OBSTACLECOUNT];
@@ -230,6 +234,19 @@ void *music_thread(void *vargp) {
     pthread_exit(NULL);
 }
 
+void GenerateQuote() {
+    uint8t quote_val = rand() % QUOTECOUNT;
+    qStat->quote_val = quote_val;
+    qStat->quote = quotes[quote_val];
+    qStat->side = rand() % 2;
+    qStat->speed = (rand() % 250)/50;
+    qStat->period = (rand() % 250)/50;
+    qStat->amplitude = (rand() % 250)/50;
+    qStat->next_quote = (rand() % 250) + 100;
+    qStat->has_quote = 1;
+    qStat->timer = 0;
+}
+
 int main(int argc, char** argv) {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0) {
         fprintf( stderr, "Error initializing SDL: %s\n", SDL_GetError() );
@@ -294,6 +311,8 @@ int main(int argc, char** argv) {
 
     pthread_t tid;
     pthread_create(&tid, NULL, music_thread, (void *)&args);
+    qStat = malloc(sizeof(QStat));
+
 
     int prevTime, curTime, deltaTime;
     double pathAngle, pathComp;
@@ -311,6 +330,7 @@ int main(int argc, char** argv) {
     fleance_sprite->rect.y = (HEIGHT - fleance_sprite->rect.h);
     pathAngle = atan2((7.0*HEIGHT)/8.0, WIDTH/3.0);
     pathComp = (PI/2) - pathAngle;
+    GenerateQuote();
 
     rock_sprite->rect.x = (WIDTH - rock_sprite->rect.w)/2;
     rock_sprite->rect.y = HEIGHT/8;
