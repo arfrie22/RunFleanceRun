@@ -27,7 +27,6 @@ Sprite* CreateSprite(Animation* animation, int w, int h) {
     rect.h = h;
     sprite->rect = rect;
     sprite->timer = 0;
-    sprite->speed = 0;
 
     return sprite;
 }

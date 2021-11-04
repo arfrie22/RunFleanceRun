@@ -49,8 +49,6 @@ typedef enum State {
 #define WIDTH 800
 #define HEIGHT 600
 
-uint8_t quote = 0;
-
 #define QUOTECOUNT 13
 static char* quotes[] = {
         "Fair is foul, and foul is fair",
@@ -76,10 +74,17 @@ static int is_interleaved = 0;
 State state;
 #define PI 3.141592654
 
+typedef enum ObsType {
+ GROUND,
+ AIR
+} ObsType;
+
 typedef struct Obstacle {
     Sprite * sprite;
     uint8_t lane;
     uint8_t speed;
+    ObsType type;
+    double x;
 } Obstacle;
 
 typedef struct QStat {
@@ -97,7 +102,7 @@ typedef struct QStat {
 QStat * qStat;
 
 #define OBSTACLECOUNT 10
-static Obstacle obstacles[OBSTACLECOUNT];
+static Obstacle * obstacles[OBSTACLECOUNT];
 
 static void libopenmpt_example_logfunc( const char * message, void * userdata ) {
     (void)userdata;
@@ -242,19 +247,18 @@ void *music_thread(void *vargp) {
 }
 
 void GenerateQuote() {
-    uint8t quote_val = rand() % QUOTECOUNT;
-    qStat->quote_val = quote_val;
-    qStat->quote = quotes[quote_val];
+    qStat->quote_val = rand() % QUOTECOUNT;
+    qStat->quote = quotes[qStat->quote_val];
     qStat->side = rand() % 2;
-    qStat->speed = (rand() % 250)/50;
-    qStat->period = (rand() % 250)/50;
-    qStat->amplitude = (rand() % 250)/50;
-    qStat->next_quote = (rand() % 250) + 100;
+    qStat->speed = (rand() % 250)/100 + 2;
+    qStat->period = (rand() % 250)/5;
+    qStat->amplitude = (rand() % 250)/25;
+    qStat->next_quote = rand() % 10;
     qStat->has_quote = 1;
     qStat->timer = 0;
 }
 
-void renderQuote(SDL_Renderer * renderer, STBTTF_Font * font, char* quote, float x, float y, float w) {
+void RenderQuote(SDL_Renderer * renderer, STBTTF_Font * font, char* quote, float x, float y, float w) {
     char buff[255];
     strcpy (buff, quote);
     float ws;
@@ -262,8 +266,6 @@ void renderQuote(SDL_Renderer * renderer, STBTTF_Font * font, char* quote, float
     float yOffset = 0;
     char* token;
     float space = STBTTF_MeasureText(font, " ");
-
-
 
     token = strtok(buff, " ");
 
@@ -279,7 +281,80 @@ void renderQuote(SDL_Renderer * renderer, STBTTF_Font * font, char* quote, float
         xOffset += space;
         token = strtok(NULL, " ");
     }
+}
 
+void TickQuote(SDL_Renderer * renderer, STBTTF_Font * font) {
+    if (qStat->has_quote) {
+        float x,w;
+
+        if (qStat->side) {
+            x = qStat->amplitude;
+            w = (WIDTH / 4.0) - x;
+        } else {
+            x = (3*(WIDTH / 4.0)) - qStat->amplitude;
+            w = WIDTH - x;
+        }
+
+
+        x += qStat->amplitude * sin((2 * PI * qStat->timer) / qStat->period);
+        float y = -font->size;
+        y += qStat->timer * qStat->speed;
+
+        if (y >= HEIGHT) {
+            qStat->has_quote = 0;
+        }
+
+        if (qStat->quote_val < 3) {
+            SDL_SetRenderDrawColor(renderer, 255, 0, 0, 127);
+        } else {
+            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 63);
+        }
+
+        RenderQuote(renderer, font, qStat->quote, x, y, w);
+        qStat->timer += 1;
+    } else if (qStat->timer > 0) {
+        qStat->timer -= 1;
+    } else {
+        GenerateQuote();
+    }
+}
+
+Obstacle * GenerateObstacle(Animation* animations[]) {
+    Obstacle * obstacle = malloc(sizeof(Obstacle));
+    obstacle->speed = (rand() % 250) / 100 + 2;
+    obstacle->type = rand() % 2;
+    Animation * animation = malloc(sizeof(Animation));
+    memcpy(animation, animations[obstacle->type], sizeof(Animation));
+    obstacle->sprite = CreateSprite(animation, 32, 32);
+    obstacle->lane = rand() % 3;
+
+    obstacle->x = (WIDTH - obstacle->sprite->rect.w) / 2;
+    obstacle->sprite->rect.x = obstacle->x - (obstacle->sprite->rect.w/2.0);
+    obstacle->sprite->rect.y = HEIGHT / 8;
+
+    return obstacle;
+}
+
+void TickObstacle(Obstacle * obstacle) {
+    double pathAngle, pathComp;
+    pathAngle = atan2((7.0*HEIGHT)/8.0, WIDTH/3.0 + 256);
+    pathComp = (PI/2) - pathAngle;
+
+    obstacle->sprite->rect.y += obstacle->speed;
+    double multiplier = 4;
+    multiplier *= ((8.0*obstacle->sprite->rect.y) - HEIGHT)/(7.0*HEIGHT);
+    multiplier += 1;
+    obstacle->sprite->rect.h = ceil(multiplier*16);
+    obstacle->sprite->rect.w = ceil(multiplier*16);
+
+    obstacle->sprite->rect.y += (obstacle->speed) * multiplier;
+    obstacle->x += (obstacle->lane-1)*(obstacle->speed * sin(pathComp) / sin(pathAngle)) * multiplier;
+    obstacle->sprite->rect.x = obstacle->x - (obstacle->lane-1)*(obstacle->sprite->rect.w);
+}
+
+void DestroyObstacle(Obstacle * obstacle) {
+    DestroySprite(obstacle->sprite);
+    free(obstacle);
 }
 
 
@@ -325,17 +400,15 @@ int main(int argc, char** argv) {
     unsigned char *rock_data = stbi_load_from_memory(rock_png_data, rock_png_size, &w, &h, &n, 0);
     SDL_Texture* rock_texture = STBIMG_CreateTexture(renderer, rock_data, w, h, n);
     Animation* rock_animation = CreateAnimation(rock_texture, 5, 1, w, h);
+    free(rock_data);
+
     unsigned char *bird_data = stbi_load_from_memory(bird_sheet_png_data, bird_sheet_png_size, &w, &h, &n, 0);
     SDL_Texture* bird_texture = STBIMG_CreateTexture(renderer, bird_data, w, h, n);
     Animation* bird_animation = CreateAnimation(bird_texture, 5, 3, w, h);
-
-
-    Sprite* rock_sprite = CreateSprite(rock_animation, 32, 32);
-    Sprite* bird_sprite = CreateSprite(bird_animation, 32, 32);
-    rock_sprite->speed = 10;
-    bird_sprite->speed = 10;
-    free(rock_data);
     free(bird_data);
+
+    Animation * animations[2] = {rock_animation, bird_animation};
+
 
     time_t t;
     srand((unsigned) time(&t));
@@ -363,7 +436,7 @@ int main(int argc, char** argv) {
 
 
     int prevTime, curTime, deltaTime;
-    double pathAngle, pathComp;
+
     Start:
     // Lol will hang after 43 days
     curTime = SDL_GetTicks();
@@ -375,17 +448,20 @@ int main(int argc, char** argv) {
     fleance_sprite->animation = fleance_crying_animation;
     fleance_sprite->rect.x = (WIDTH - fleance_sprite->rect.w)/2;
     fleance_sprite->rect.y = (HEIGHT - fleance_sprite->rect.h);
-    pathAngle = atan2((7.0*HEIGHT)/8.0, WIDTH/3.0);
-    pathComp = (PI/2) - pathAngle;
     GenerateQuote();
 
-    rock_sprite->rect.x = (WIDTH - rock_sprite->rect.w)/2;
-    rock_sprite->rect.y = HEIGHT/8;
-    bird_sprite->rect.x = (WIDTH - bird_sprite->rect.w)/2;
-    bird_sprite->rect.y = HEIGHT/8;
+    for (int i = 0; i < OBSTACLECOUNT; ++i) {
+        if (obstacles[i] != NULL) {
+            DestroyObstacle(obstacles[i]);
+            obstacles[i] = NULL;
+        }
+    }
+
+    obstacles[0] = GenerateObstacle(animations);
 
     uint8_t lane = 1;
     uint8_t ducking = 0;
+    uint8_t jumping = 0;
 
     while (running) {
         curTime = SDL_GetTicks();
@@ -454,16 +530,25 @@ int main(int argc, char** argv) {
 
                                 case SDLK_DOWN:
                                 case SDLK_s:
+                                    if (jumping) {
+                                        fleance_sprite->rect.y = (HEIGHT - fleance_sprite->rect.h);
+                                    }
+
                                     ducking = 1;
+                                    jumping = 0;
                                     fleance_ducking_animation->frame = fleance_running_animation->frame;
                                     fleance_sprite->animation = fleance_ducking_animation;
                                     break;
 
                                 case SDLK_UP:
                                 case SDLK_w:
-                                    ducking = 0;
-                                    fleance_running_animation->frame = fleance_ducking_animation->frame;
-                                    fleance_sprite->animation = fleance_running_animation;
+                                    if (!jumping) {
+                                        ducking = 0;
+                                        jumping = 1;
+                                        fleance_running_animation->frame = fleance_ducking_animation->frame;
+                                        fleance_sprite->animation = fleance_running_animation;
+                                        fleance_sprite->rect.y = (HEIGHT - fleance_sprite->rect.h) - ;
+                                    }
                                     break;
                             }
                             break;
@@ -496,26 +581,10 @@ int main(int argc, char** argv) {
                     IncFrame(background_sprite);
                 }
 
-                if (TickSprite(rock_sprite)) {
-                    double multiplier = 4;
-                    multiplier *= ((8.0*rock_sprite->rect.y) - HEIGHT)/(7.0*HEIGHT);
-                    multiplier += 1;
-                    rock_sprite->rect.h = ceil(multiplier*16);
-                    rock_sprite->rect.w = ceil(multiplier*16);
-
-                    rock_sprite->rect.y += (rock_sprite->speed) * multiplier;
-                    rock_sprite->rect.x -= (rock_sprite->speed * sin(pathComp) / sin(pathAngle)) * multiplier;
-                }
-
-                if (TickSprite(bird_sprite)) {
-                    double multiplier = 4;
-                    multiplier *= ((8.0*bird_sprite->rect.y) - HEIGHT)/(7.0*HEIGHT);
-                    multiplier += 1;
-                    bird_sprite->rect.h = ceil(multiplier*16);
-                    bird_sprite->rect.w = ceil(multiplier*16);
-
-                    bird_sprite->rect.y += (bird_sprite->speed) * multiplier;
-                    bird_sprite->rect.x -= (bird_sprite->speed * sin(pathComp) / sin(pathAngle)) * multiplier;
+                for (int i = 0; i < OBSTACLECOUNT; ++i) {
+                    if (obstacles[i] != NULL) {
+                        TickObstacle(obstacles[i]);
+                    }
                 }
             }
         }
@@ -532,15 +601,37 @@ int main(int argc, char** argv) {
                 STBTTF_RenderText(renderer, font, 400 - (ws / 2), 300, "Press any key to begin");
                 break;
             case PLAY:
-                RenderSprite(renderer, rock_sprite);
-                RenderSprite(renderer, bird_sprite);
+                for (int i = 0; i < OBSTACLECOUNT; ++i) {
+                    if (obstacles[i] != NULL) {
+                        if (TickSprite(obstacles[i]->sprite)) {
+                            IncFrame(obstacles[i]->sprite);
+                        }
+                        RenderSprite(renderer, obstacles[i]->sprite);
+                        if (obstacles[i]->sprite->rect.y >= HEIGHT) {
+                            DestroyObstacle(obstacles[i]);
+                            obstacles[i] = NULL;
+                        }
+                    }
+                }
+
+                if (rand() % 30 == 0) {
+                    for (int i = 0; i < OBSTACLECOUNT; ++i) {
+                        if (obstacles[i] == NULL) {
+                            obstacles[i] = GenerateObstacle(animations);
+                            break;
+                        }
+                    }
+                }
+
+                // TODO ADD OBJ
+
 
                 if (paused) {
                     SDL_SetRenderDrawColor(renderer, 128, 0, 0, 255);
                     ws = STBTTF_MeasureText(font, "Paused");
                     STBTTF_RenderText(renderer, font, 400 - (ws / 2), 300, "Paused");
                 } else {
-                    quote = rand() % QUOTECOUNT;
+                    TickQuote(renderer, quoteFont);
                 }
 
                 SDL_FRect progress;
@@ -554,18 +645,6 @@ int main(int argc, char** argv) {
                 SDL_SetRenderDrawColor(renderer, 128, 0, 0, 255);
                 SDL_RenderFillRectF(renderer, &progress);
 
-                // TODO text
-//                uint8_t quote = rand() % QUOTECOUNT;
-                if (quote < 3) {
-                    SDL_SetRenderDrawColor(renderer, 255, 0, 0, 127);
-                } else {
-                    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 63);
-                }
-                renderQuote(renderer, quoteFont, quotes[quote], 0, 300, 100);
-//                ws = STBTTF_MeasureText(quoteFont, quotes[quote]);
-//
-////                if (qStat)
-//                STBTTF_RenderText(renderer, quoteFont, 400 - (ws / 2), 300, quotes[quote]);
                 break;
             case GAMEOVER:
                 SDL_SetRenderDrawColor(renderer, 128, 0, 0, 255);
@@ -589,6 +668,13 @@ int main(int argc, char** argv) {
     DestroySprite(fleance_sprite);
     DestroyAnimation(background_animation);
     DestroySprite(background_sprite);
+
+    for (int i = 0; i < OBSTACLECOUNT; ++i) {
+        if (obstacles[i] != NULL) {
+            DestroyObstacle(obstacles[i]);
+            obstacles[i] = NULL;
+        }
+    }
 
     STBTTF_CloseFont(font);
     STBTTF_CloseFont(quoteFont);

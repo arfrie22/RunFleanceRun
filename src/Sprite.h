@@ -14,7 +14,6 @@ typedef struct Sprite {
     SDL_Rect rect;
     uint8_t timer;
     Animation* animation;
-    uint8_t speed;
 } Sprite;
 
 Animation* CreateAnimation(SDL_Texture* texture, uint8_t frametime, uint8_t frame_count, int w, int h);
