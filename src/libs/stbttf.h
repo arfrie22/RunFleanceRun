@@ -75,6 +75,7 @@ STBTTF_Font* STBTTF_OpenFontRW(SDL_Renderer* renderer, SDL_RWops* rw, float size
 	STBTTF_Font* font = calloc(sizeof(STBTTF_Font), 1);
 	font->info = malloc(sizeof(stbtt_fontinfo));
 	font->chars = malloc(sizeof(stbtt_packedchar) * 96);
+	font->size = size;
 
 	if(stbtt_InitFont(font->info, buffer, 0) == 0) {
 		free(buffer);
@@ -138,6 +139,7 @@ STBTTF_Font* STBTTF_OpenFontMem(SDL_Renderer* renderer, const unsigned char* dat
 	STBTTF_Font* font = calloc(sizeof(STBTTF_Font), 1);
 	font->info = malloc(sizeof(stbtt_fontinfo));
 	font->chars = malloc(sizeof(stbtt_packedchar) * 96);
+	font->size = size;
 
 	if(stbtt_InitFont(font->info, buffer, 0) == 0) {
 		free(buffer);

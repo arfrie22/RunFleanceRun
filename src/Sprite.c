@@ -59,6 +59,17 @@ uint8_t IncFrame(Sprite* sprite) {
     return result;
 }
 
+uint8_t IncFrameTo(Sprite* sprite, uint8_t frame) {
+    uint8_t result = 0;
+    sprite->animation->frame += 1;
+    if (sprite->animation->frame >= sprite->animation->frame_count) {
+        result = 1;
+        sprite->animation->frame = frame;
+    }
+
+    return result;
+}
+
 void DestroyAnimation(Animation* animation) {
     SDL_DestroyTexture(animation->texture_sheet);
     free(animation);

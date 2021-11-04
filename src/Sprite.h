@@ -23,6 +23,8 @@ Sprite* CreateSprite(Animation* animation, int w, int h);
 void RenderSprite(SDL_Renderer* renderer, Sprite* sprite);
 uint8_t TickSprite(Sprite* sprite);
 uint8_t IncFrame(Sprite* sprite);
+uint8_t IncFrameTo(Sprite* sprite, uint8_t frame);
+
 
 void DestroyAnimation(Animation* animation);
 void DestroySprite(Sprite* sprite);

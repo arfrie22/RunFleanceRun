@@ -14,9 +14,10 @@
 
 #include <fleance_crying_sheet_png.h>
 #include <fleance_running_sheet_png.h>
+#include <fleance_ducking_sheet_png.h>
 #include <background_sheet_png.h>
 #include <rock_png.h>
-#include <branch_png.h>
+#include <bird_sheet_png.h>
 #include <radix_mountain_king_mod.h>
 #include <ChronoTrigger_ttf.h>
 #include "Sprite.h"
@@ -48,6 +49,7 @@ typedef enum State {
 #define WIDTH 800
 #define HEIGHT 600
 
+uint8_t quote = 0;
 
 #define QUOTECOUNT 13
 static char* quotes[] = {
@@ -139,6 +141,7 @@ typedef struct MusicArg {
     uint8_t * paused;
     uint8_t * running;
     uint8_t * initialized;
+    uint8_t * seek;
 } MusicArg;
 
 void *music_thread(void *vargp) {
@@ -190,6 +193,10 @@ void *music_thread(void *vargp) {
     *args.initialized = 1;
 
     while (1) {
+        if (*args.seek) {
+            openmpt_module_set_position_seconds(mod, 0);
+            *args.seek = 0;
+        }
         if (state == PLAY && !*args.paused) {
             openmpt_module_error_clear(mod);
             count = is_interleaved ? openmpt_module_read_interleaved_stereo(mod, SAMPLERATE, BUFFERSIZE,
@@ -230,6 +237,35 @@ void *music_thread(void *vargp) {
     pthread_exit(NULL);
 }
 
+void renderQuote(SDL_Renderer * renderer, STBTTF_Font * font, char* quote, float x, float y, float w) {
+    char buff[255];
+    strcpy (buff, quote);
+    float ws;
+    float xOffset = 0;
+    float yOffset = 0;
+    char* token;
+    float space = STBTTF_MeasureText(font, " ");
+
+
+
+    token = strtok(buff, " ");
+
+    while( token != NULL ) {
+        ws = STBTTF_MeasureText(font, token);
+        if ((xOffset+ws) > w) {
+            yOffset += (9*font->size)/8;
+            xOffset = 0;
+        }
+
+        STBTTF_RenderText(renderer, font, x+xOffset, y+yOffset, token);
+        xOffset += ws;
+        xOffset += space;
+        token = strtok(NULL, " ");
+    }
+
+}
+
+
 int main(int argc, char** argv) {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0) {
         fprintf( stderr, "Error initializing SDL: %s\n", SDL_GetError() );
@@ -255,8 +291,13 @@ int main(int argc, char** argv) {
     unsigned char *fleance_running_data = stbi_load_from_memory(fleance_running_sheet_png_data, fleance_running_sheet_png_size, &w, &h, &n, 0);
     SDL_Texture* fleance_running_texture = STBIMG_CreateTexture(renderer, fleance_running_data, w, h, n);
     Animation* fleance_running_animation = CreateAnimation(fleance_running_texture, 2, 7, w, h);
+    unsigned char *fleance_ducking_data = stbi_load_from_memory(fleance_ducking_sheet_png_data, fleance_ducking_sheet_png_size, &w, &h, &n, 0);
+    SDL_Texture* fleance_ducking_texture = STBIMG_CreateTexture(renderer, fleance_ducking_data, w, h, n);
+    Animation* fleance_ducking_animation = CreateAnimation(fleance_ducking_texture, 2, 7, w, h);
     Sprite* fleance_sprite = CreateSprite(fleance_crying_animation, 64, 128);
     free(fleance_crying_data);
+    free(fleance_running_data);
+    free(fleance_ducking_data);
 
     unsigned char *background_data = stbi_load_from_memory(background_sheet_png_data, background_sheet_png_size, &w, &h, &n, 0);
     SDL_Texture* background_texture = STBIMG_CreateTexture(renderer, background_data, w, h, n);
@@ -266,13 +307,18 @@ int main(int argc, char** argv) {
 
     unsigned char *rock_data = stbi_load_from_memory(rock_png_data, rock_png_size, &w, &h, &n, 0);
     SDL_Texture* rock_texture = STBIMG_CreateTexture(renderer, rock_data, w, h, n);
-    unsigned char *branch_data = stbi_load_from_memory(branch_png_data, branch_png_size, &w, &h, &n, 0);
-    SDL_Texture* branch_texture = STBIMG_CreateTexture(renderer, branch_data, w, h, n);
-
     Animation* rock_animation = CreateAnimation(rock_texture, 5, 1, w, h);
+    unsigned char *bird_data = stbi_load_from_memory(bird_sheet_png_data, bird_sheet_png_size, &w, &h, &n, 0);
+    SDL_Texture* bird_texture = STBIMG_CreateTexture(renderer, bird_data, w, h, n);
+    Animation* bird_animation = CreateAnimation(bird_texture, 5, 3, w, h);
+
+
     Sprite* rock_sprite = CreateSprite(rock_animation, 32, 32);
+    Sprite* bird_sprite = CreateSprite(bird_animation, 32, 32);
     rock_sprite->speed = 10;
+    bird_sprite->speed = 10;
     free(rock_data);
+    free(bird_data);
 
     time_t t;
     srand((unsigned) time(&t));
@@ -280,16 +326,18 @@ int main(int argc, char** argv) {
     STBTTF_Font* font = STBTTF_OpenFontMem(renderer, ChronoTrigger_ttf_data, ChronoTrigger_ttf_size, 32);
     STBTTF_Font* quoteFont = STBTTF_OpenFontMem(renderer, ChronoTrigger_ttf_data, ChronoTrigger_ttf_size, 16);
     openmpt_module * mod = 0;
-    uint8_t paused, running, initialized;
+    uint8_t paused, running, initialized, seek;
     initialized = 0;
     running = 1;
     paused = 0;
+    seek = 1;
 
     MusicArg args = {
             .mod = &mod,
             .paused = &paused,
             .running = &running,
-            .initialized = &initialized
+            .initialized = &initialized,
+            .seek = &seek
     };
 
     pthread_t tid;
@@ -302,7 +350,6 @@ int main(int argc, char** argv) {
     curTime = SDL_GetTicks();
     prevTime = curTime;
     while (!initialized) {}
-    openmpt_module_set_position_seconds(mod, 0);
     state = TITLE;
     running = 1;
     paused = 0;
@@ -314,7 +361,11 @@ int main(int argc, char** argv) {
 
     rock_sprite->rect.x = (WIDTH - rock_sprite->rect.w)/2;
     rock_sprite->rect.y = HEIGHT/8;
+    bird_sprite->rect.x = (WIDTH - bird_sprite->rect.w)/2;
+    bird_sprite->rect.y = HEIGHT/8;
+
     uint8_t lane = 1;
+    uint8_t ducking = 0;
 
     while (running) {
         curTime = SDL_GetTicks();
@@ -360,7 +411,7 @@ int main(int argc, char** argv) {
                             if (e.key.keysym.sym != SDLK_r) {
                                 fleance_sprite->animation = fleance_running_animation;
                                 state = PLAY;
-                                openmpt_module_set_position_seconds(mod, 0);
+                                seek = 1;
                             }
                             break;
                         case PLAY:
@@ -380,6 +431,20 @@ int main(int argc, char** argv) {
                                         fleance_sprite->rect.x += WIDTH/3;
                                     }
                                     break;
+
+                                case SDLK_DOWN:
+                                case SDLK_s:
+                                    ducking = 1;
+                                    fleance_ducking_animation->frame = fleance_running_animation->frame;
+                                    fleance_sprite->animation = fleance_ducking_animation;
+                                    break;
+
+                                case SDLK_UP:
+                                case SDLK_w:
+                                    ducking = 0;
+                                    fleance_running_animation->frame = fleance_ducking_animation->frame;
+                                    fleance_sprite->animation = fleance_running_animation;
+                                    break;
                             }
                             break;
                         case GAMEOVER:
@@ -392,13 +457,21 @@ int main(int argc, char** argv) {
         }
 
         if (!paused) {
-            if (state == TITLE || state == PLAY) {
+            if (state == TITLE) {
                 if (TickSprite(fleance_sprite)) {
                     IncFrame(fleance_sprite);
                 }
             }
 
             if (state == PLAY) {
+                if (TickSprite(fleance_sprite)) {
+                    if (!ducking) {
+                        IncFrame(fleance_sprite);
+                    } else {
+                        IncFrameTo(fleance_sprite, 3);
+                    }
+                }
+
                 if (TickSprite(background_sprite)) {
                     IncFrame(background_sprite);
                 }
@@ -412,6 +485,17 @@ int main(int argc, char** argv) {
 
                     rock_sprite->rect.y += (rock_sprite->speed) * multiplier;
                     rock_sprite->rect.x -= (rock_sprite->speed * sin(pathComp) / sin(pathAngle)) * multiplier;
+                }
+
+                if (TickSprite(bird_sprite)) {
+                    double multiplier = 4;
+                    multiplier *= ((8.0*bird_sprite->rect.y) - HEIGHT)/(7.0*HEIGHT);
+                    multiplier += 1;
+                    bird_sprite->rect.h = ceil(multiplier*16);
+                    bird_sprite->rect.w = ceil(multiplier*16);
+
+                    bird_sprite->rect.y += (bird_sprite->speed) * multiplier;
+                    bird_sprite->rect.x -= (bird_sprite->speed * sin(pathComp) / sin(pathAngle)) * multiplier;
                 }
             }
         }
@@ -429,11 +513,14 @@ int main(int argc, char** argv) {
                 break;
             case PLAY:
                 RenderSprite(renderer, rock_sprite);
+                RenderSprite(renderer, bird_sprite);
 
                 if (paused) {
                     SDL_SetRenderDrawColor(renderer, 128, 0, 0, 255);
                     ws = STBTTF_MeasureText(font, "Paused");
                     STBTTF_RenderText(renderer, font, 400 - (ws / 2), 300, "Paused");
+                } else {
+                    quote = rand() % QUOTECOUNT;
                 }
 
                 SDL_FRect progress;
@@ -448,16 +535,17 @@ int main(int argc, char** argv) {
                 SDL_RenderFillRectF(renderer, &progress);
 
                 // TODO text
-                uint8_t quote = rand() % QUOTECOUNT;
+//                uint8_t quote = rand() % QUOTECOUNT;
                 if (quote < 3) {
                     SDL_SetRenderDrawColor(renderer, 255, 0, 0, 127);
                 } else {
                     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 63);
                 }
-                ws = STBTTF_MeasureText(quoteFont, quotes[quote]);
-
-//                if (qStat)
-                STBTTF_RenderText(renderer, quoteFont, 400 - (ws / 2), 300, quotes[quote]);
+                renderQuote(renderer, quoteFont, quotes[quote], 0, 300, 100);
+//                ws = STBTTF_MeasureText(quoteFont, quotes[quote]);
+//
+////                if (qStat)
+//                STBTTF_RenderText(renderer, quoteFont, 400 - (ws / 2), 300, quotes[quote]);
                 break;
             case GAMEOVER:
                 SDL_SetRenderDrawColor(renderer, 128, 0, 0, 255);
