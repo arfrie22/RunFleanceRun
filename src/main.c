@@ -595,7 +595,7 @@ int main(int argc, char** argv) {
             case TITLE:
                 SDL_SetRenderDrawColor(renderer, 128, 0, 0, 255);
                 ws = STBTTF_MeasureText(font, "Press any key to begin");
-                STBTTF_RenderText(renderer, font, 400 - (ws / 2), 300, "Press any key to begin");
+                STBTTF_RenderText(renderer, font, (WIDTH - ws) / 2, (HEIGHT-font->size) / 2, "Press any key to begin");
                 break;
             case PLAY:
                 for (int i = 0; i < OBSTACLECOUNT; ++i) {
@@ -626,7 +626,7 @@ int main(int argc, char** argv) {
                 if (paused) {
                     SDL_SetRenderDrawColor(renderer, 128, 0, 0, 255);
                     ws = STBTTF_MeasureText(font, "Paused");
-                    STBTTF_RenderText(renderer, font, 400 - (ws / 2), 300, "Paused");
+                    STBTTF_RenderText(renderer, font, (WIDTH - ws) / 2, (HEIGHT-font->size) / 2, "Paused");
                 } else {
                     TickQuote(renderer, quoteFont);
                 }
@@ -646,12 +646,12 @@ int main(int argc, char** argv) {
             case GAMEOVER:
                 SDL_SetRenderDrawColor(renderer, 128, 0, 0, 255);
                 ws = STBTTF_MeasureText(font, "GAME OVER!");
-                STBTTF_RenderText(renderer, font, 400 - (ws / 2), 300, "GAME OVER!");
+                STBTTF_RenderText(renderer, font, (WIDTH - ws) / 2, (HEIGHT-font->size) / 2, "GAME OVER!");
                 break;
             case WIN:
                 SDL_SetRenderDrawColor(renderer, 128, 0, 0, 255);
                 ws = STBTTF_MeasureText(font, "YOU WIN!");
-                STBTTF_RenderText(renderer, font, 400 - (ws / 2), 300, "YOU WIN!");
+                STBTTF_RenderText(renderer, font, (WIDTH - ws) / 2, (HEIGHT-font->size) / 2, "YOU WIN!");
                 break;
         }
 
