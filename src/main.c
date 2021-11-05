@@ -530,24 +530,21 @@ int main(int argc, char** argv) {
 
                                 case SDLK_DOWN:
                                 case SDLK_s:
-                                    if (jumping) {
+                                    if (!jumping) {
                                         fleance_sprite->rect.y = (HEIGHT - fleance_sprite->rect.h);
+                                        ducking = 1;
+                                        fleance_ducking_animation->frame = fleance_running_animation->frame;
+                                        fleance_sprite->animation = fleance_ducking_animation;
                                     }
-
-                                    ducking = 1;
-                                    jumping = 0;
-                                    fleance_ducking_animation->frame = fleance_running_animation->frame;
-                                    fleance_sprite->animation = fleance_ducking_animation;
                                     break;
 
                                 case SDLK_UP:
                                 case SDLK_w:
-                                    if (!jumping) {
-                                        ducking = 0;
+                                    if (!ducking) {
                                         jumping = 1;
                                         fleance_running_animation->frame = fleance_ducking_animation->frame;
                                         fleance_sprite->animation = fleance_running_animation;
-                                        fleance_sprite->rect.y = (HEIGHT - fleance_sprite->rect.h) - ;
+                                        fleance_sprite->rect.y = (HEIGHT - fleance_sprite->rect.h);
                                     }
                                     break;
                             }
@@ -634,16 +631,16 @@ int main(int argc, char** argv) {
                     TickQuote(renderer, quoteFont);
                 }
 
-                SDL_FRect progress;
+                SDL_Rect progress;
                 progress.x = 0;
                 progress.y = HEIGHT;
                 progress.h = 25;
                 progress.w = WIDTH;
                 SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-                SDL_RenderFillRectF(renderer, &progress);
+                SDL_RenderFillRect(renderer, &progress);
                 progress.w = WIDTH * (openmpt_module_get_position_seconds(mod)/openmpt_module_get_duration_seconds(mod));
                 SDL_SetRenderDrawColor(renderer, 128, 0, 0, 255);
-                SDL_RenderFillRectF(renderer, &progress);
+                SDL_RenderFillRect(renderer, &progress);
 
                 break;
             case GAMEOVER:

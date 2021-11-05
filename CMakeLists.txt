@@ -29,7 +29,8 @@ FileEmbedAdd(${CMAKE_SOURCE_DIR}/rock.png)
 FileEmbedAdd(${CMAKE_SOURCE_DIR}/bird-sheet.png)
 FileEmbedAdd(${CMAKE_SOURCE_DIR}/ChronoTrigger.ttf)
 
-target_link_libraries(RunFleanceRun file_embed portaudio openmpt SDL2main SDL2_ttf SDL2 ${REQUIRED_LIBS})
+target_link_libraries(RunFleanceRun file_embed portaudio openmpt SDL2main SDL2_ttf SDL2 m pthread ${REQUIRED_LIBS})
+
 add_definitions(-DSDL_MAIN_HANDLED)
 
 install(CODE [[
