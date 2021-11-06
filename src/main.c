@@ -12,8 +12,6 @@
 #include <stbttf.h>
 #include <pthread.h>
 
-#define __EMSCRIPTEN__
-
 #ifndef __EMSCRIPTEN__
 #include <fleance_crying_sheet_png.h>
 #include <fleance_running_sheet_png.h>
