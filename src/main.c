@@ -1,5 +1,4 @@
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_ttf.h>
 
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
 #include <stb_image_resize.h>
@@ -28,11 +27,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <libopenmpt/libopenmpt.h>
-#include <libopenmpt/libopenmpt_stream_callbacks_file.h>
-
 #ifndef __EMSCRIPTEN__
 #include <portaudio.h>
+#include <libopenmpt/libopenmpt.h>
 #endif
 
 #define FRAMERATE 30
@@ -106,6 +103,7 @@ static int16_t * const buffers[2] = { left, right };
 static int16_t interleaved_buffer[BUFFERSIZE * 2];
 static int is_interleaved = 0;
 
+#ifndef __EMSCRIPTEN__
 static void libopenmpt_example_logfunc( const char * message, void * userdata ) {
     (void)userdata;
     if ( message ) {
@@ -146,9 +144,10 @@ static void libopenmpt_example_print_error( const char * func_name, int mod_err,
         fprintf( stderr, "Error: %s failed: %s\n", func_name, mod_err_str );
     }
 }
+#endif
 
 typedef struct MusicArg {
-    openmpt_module ** mod;
+    float * audio_progress;
     uint8_t * paused;
     uint8_t * running;
     uint8_t * initialized;
@@ -158,14 +157,13 @@ typedef struct MusicArg {
 void *music_thread(void *vargp) {
     MusicArg args = *(MusicArg*)vargp;
 
+    #ifndef __EMSCRIPTEN__
     openmpt_module * mod = 0;
     int mod_err = OPENMPT_ERROR_OK;
     const char * mod_err_str = NULL;
     size_t count = 0;
-    #ifndef __EMSCRIPTEN__
     PaError pa_error = paNoError;
     PaStream * stream = 0;
-    #endif
 
     mod = openmpt_module_create_from_memory2( radix_mountain_king_mod_data, radix_mountain_king_mod_size, &libopenmpt_example_logfunc, NULL, &libopenmpt_example_errfunc, NULL, &mod_err, &mod_err_str, NULL );
     if (!mod) {
@@ -176,7 +174,6 @@ void *music_thread(void *vargp) {
     }
     openmpt_module_set_error_func( mod, NULL, NULL );
 
-    #ifndef __EMSCRIPTEN__
     pa_error = Pa_Initialize();
     if ( pa_error != paNoError ) {
         fprintf( stderr, "Error: %s\n", "Pa_Initialize() failed." );
@@ -204,15 +201,23 @@ void *music_thread(void *vargp) {
     }
     #endif
 
-    *args.mod = mod;
+    *args.audio_progress = 0;
     *args.initialized = 1;
+    unsigned long long length = 7436000000;
+    unsigned long long seek = 0;
 
     while (1) {
         if (*args.seek) {
+            #ifndef __EMSCRIPTEN__
             openmpt_module_set_position_seconds(mod, 0);
+            #else
+            seek = 0;
+            #endif
             *args.seek = 0;
         }
+
         if (state == PLAY && !*args.paused) {
+            #ifndef __EMSCRIPTEN__
             openmpt_module_error_clear(mod);
             count = is_interleaved ? openmpt_module_read_interleaved_stereo(mod, SAMPLERATE, BUFFERSIZE,
                                                                                   interleaved_buffer)
@@ -224,7 +229,6 @@ void *music_thread(void *vargp) {
                 openmpt_free_string(mod_err_str);
                 mod_err_str = NULL;
             }
-//            fprintf(stdout, "Position %f, Length %f\n", openmpt_module_get_position_seconds(mod), openmpt_module_get_duration_seconds(mod));
 
             if (count == 0) {
                 if (openmpt_module_get_position_seconds(mod) >= openmpt_module_get_duration_seconds(mod)) {
@@ -234,7 +238,6 @@ void *music_thread(void *vargp) {
                     openmpt_module_set_position_seconds(mod, 0);
                 }
             } else {
-                #ifndef __EMSCRIPTEN__
                 pa_error = is_interleaved ? Pa_WriteStream(stream, interleaved_buffer,
                                                                  (unsigned long) count)
                                                 : Pa_WriteStream(stream, buffers, (unsigned long) count);
@@ -246,11 +249,19 @@ void *music_thread(void *vargp) {
                     *args.running = 0;
                     pthread_exit(NULL);
                 }
-                #else
-                usleep((unsigned int) ((double) count/SAMPLERATE * 1000000));
-                #endif
-
             }
+            *args.audio_progress = openmpt_module_get_position_seconds(mod)/openmpt_module_get_duration_seconds(mod);
+            #else
+            struct timespec ts;
+            ts.tv_sec = 1/SAMPLERATE;
+            ts.tv_nsec = ((double) 1/SAMPLERATE * 1000000000);
+            nanosleep(&ts, &ts);
+            seek += 1;
+            *args.audio_progress = (float) (seek >> 7)/(length >> 7);
+            if (seek >= length) {
+                state = WIN;
+            }
+            #endif
         }
     }
     pthread_exit(NULL);
@@ -425,7 +436,7 @@ int main(int argc, char** argv) {
 
     STBTTF_Font* font = STBTTF_OpenFontMem(renderer, ChronoTrigger_ttf_data, ChronoTrigger_ttf_size, 32);
     STBTTF_Font* quoteFont = STBTTF_OpenFontMem(renderer, ChronoTrigger_ttf_data, ChronoTrigger_ttf_size, 16);
-    openmpt_module * mod = 0;
+    float audio_progress = 0;
     uint8_t paused, running, initialized, seek;
     initialized = 0;
     running = 1;
@@ -433,7 +444,7 @@ int main(int argc, char** argv) {
     seek = 1;
 
     MusicArg args = {
-            .mod = &mod,
+            .audio_progress = &audio_progress,
             .paused = &paused,
             .running = &running,
             .initialized = &initialized,
@@ -702,7 +713,7 @@ int main(int argc, char** argv) {
         progress.w = WIDTH;
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderFillRect(renderer, &progress);
-        progress.w = WIDTH * (openmpt_module_get_position_seconds(mod)/openmpt_module_get_duration_seconds(mod));
+        progress.w = WIDTH * audio_progress;
         SDL_SetRenderDrawColor(renderer, 128, 0, 0, 255);
         SDL_RenderFillRect(renderer, &progress);
 
