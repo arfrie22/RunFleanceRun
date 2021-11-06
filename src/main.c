@@ -2,6 +2,7 @@
 
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
 #include <stb_image_resize.h>
+#define SDL_STBIMG_ALLOW_STDIO
 #define SDL_STBIMAGE_IMPLEMENTATION
 #include <SDL_stbimage.h>
 //#include <stb_image.h>
@@ -11,6 +12,9 @@
 #include <stbttf.h>
 #include <pthread.h>
 
+#define __EMSCRIPTEN__
+
+#ifndef __EMSCRIPTEN__
 #include <fleance_crying_sheet_png.h>
 #include <fleance_running_sheet_png.h>
 #include <fleance_ducking_sheet_png.h>
@@ -19,6 +23,9 @@
 #include <bird_sheet_png.h>
 #include <radix_mountain_king_mod.h>
 #include <ChronoTrigger_ttf.h>
+#endif
+
+
 #include "Sprite.h"
 
 #include <memory.h>
@@ -31,6 +38,7 @@
 #include <portaudio.h>
 #include <libopenmpt/libopenmpt.h>
 #endif
+
 
 #define FRAMERATE 30
 #define FRAMEDELTA (1000/FRAMERATE)
@@ -398,13 +406,26 @@ int main(int argc, char** argv) {
     }
 
     int w,h,n;
+
+    #ifndef __EMSCRIPTEN__
     unsigned char *fleance_crying_data = stbi_load_from_memory(fleance_crying_sheet_png_data, fleance_crying_sheet_png_size, &w, &h, &n, 0);
+    #else
+    unsigned char *fleance_crying_data = stbi_load("fleance-crying-sheet.png", &w, &h, &n, 0);
+    #endif
     SDL_Texture* fleance_crying_texture = STBIMG_CreateTexture(renderer, fleance_crying_data, w, h, n);
     Animation* fleance_crying_animation = CreateAnimation(fleance_crying_texture, 4, 12, w, h);
+    #ifndef __EMSCRIPTEN__
     unsigned char *fleance_running_data = stbi_load_from_memory(fleance_running_sheet_png_data, fleance_running_sheet_png_size, &w, &h, &n, 0);
+    #else
+    unsigned char *fleance_running_data = stbi_load("fleance-running-sheet.png", &w, &h, &n, 0);
+    #endif
     SDL_Texture* fleance_running_texture = STBIMG_CreateTexture(renderer, fleance_running_data, w, h, n);
     Animation* fleance_running_animation = CreateAnimation(fleance_running_texture, 2, 7, w, h);
+    #ifndef __EMSCRIPTEN__
     unsigned char *fleance_ducking_data = stbi_load_from_memory(fleance_ducking_sheet_png_data, fleance_ducking_sheet_png_size, &w, &h, &n, 0);
+    #else
+    unsigned char *fleance_ducking_data = stbi_load("fleance-running-sheet.png", &w, &h, &n, 0);
+#endif
     SDL_Texture* fleance_ducking_texture = STBIMG_CreateTexture(renderer, fleance_ducking_data, w, h, n);
     Animation* fleance_ducking_animation = CreateAnimation(fleance_ducking_texture, 2, 7, w, h);
     Sprite* fleance_sprite = CreateSprite(fleance_crying_animation, 64, 128);
@@ -412,18 +433,30 @@ int main(int argc, char** argv) {
     free(fleance_running_data);
     free(fleance_ducking_data);
 
+    #ifndef __EMSCRIPTEN__
     unsigned char *background_data = stbi_load_from_memory(background_sheet_png_data, background_sheet_png_size, &w, &h, &n, 0);
+    #else
+    unsigned char *background_data = stbi_load("background-sheet.png", &w, &h, &n, 0);
+    #endif
     SDL_Texture* background_texture = STBIMG_CreateTexture(renderer, background_data, w, h, n);
     Animation* background_animation = CreateAnimation(background_texture, 5, 3, w, h);
     Sprite* background_sprite = CreateSprite(background_animation, WIDTH, HEIGHT);
     free(background_data);
 
+    #ifndef __EMSCRIPTEN__
     unsigned char *rock_data = stbi_load_from_memory(rock_png_data, rock_png_size, &w, &h, &n, 0);
+    #else
+    unsigned char *rock_data = stbi_load("rock.png", &w, &h, &n, 0);
+#endif
     SDL_Texture* rock_texture = STBIMG_CreateTexture(renderer, rock_data, w, h, n);
     Animation* rock_animation = CreateAnimation(rock_texture, 5, 1, w, h);
     free(rock_data);
 
+    #ifndef __EMSCRIPTEN__
     unsigned char *bird_data = stbi_load_from_memory(bird_sheet_png_data, bird_sheet_png_size, &w, &h, &n, 0);
+    #else
+    unsigned char *bird_data = stbi_load("bird.png", &w, &h, &n, 0);
+    #endif
     SDL_Texture* bird_texture = STBIMG_CreateTexture(renderer, bird_data, w, h, n);
     Animation* bird_animation = CreateAnimation(bird_texture, 5, 3, w, h);
     free(bird_data);
@@ -434,8 +467,13 @@ int main(int argc, char** argv) {
     time_t t;
     srand((unsigned) time(&t));
 
+    #ifndef __EMSCRIPTEN__
     STBTTF_Font* font = STBTTF_OpenFontMem(renderer, ChronoTrigger_ttf_data, ChronoTrigger_ttf_size, 32);
     STBTTF_Font* quoteFont = STBTTF_OpenFontMem(renderer, ChronoTrigger_ttf_data, ChronoTrigger_ttf_size, 16);
+    #else
+    STBTTF_Font* font = STBTTF_OpenFont(renderer, "ChronoTrigger.ttf", 32);
+    STBTTF_Font* quoteFont = STBTTF_OpenFont(renderer, "ChronoTrigger.ttf", 16);
+    #endif
     float audio_progress = 0;
     uint8_t paused, running, initialized, seek;
     initialized = 0;
