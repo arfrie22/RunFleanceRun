@@ -4,6 +4,7 @@ project(RunFleanceRun C)
 set(CMAKE_C_STANDARD 99)
 
 find_package(SDL2 REQUIRED)
+find_package(OpenAL REQUIRED)
 
 set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH} D:/Program Files (x86)/portaudio")
 include_directories("D:/portaudio/build/inc")

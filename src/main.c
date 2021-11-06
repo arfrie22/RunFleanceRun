@@ -31,13 +31,12 @@
 #include <libopenmpt/libopenmpt.h>
 #include <libopenmpt/libopenmpt_stream_callbacks_file.h>
 
+#ifndef __EMSCRIPTEN__
 #include <portaudio.h>
+#endif
 
 #define FRAMERATE 30
 #define FRAMEDELTA (1000/FRAMERATE)
-
-#define BUFFERSIZE 480
-#define SAMPLERATE 48000
 
 typedef enum State {
     TITLE,
@@ -66,11 +65,6 @@ static char* quotes[] = {
         "Here lay Duncan,  his silver skin laced with his golden blood"
 };
 
-static int16_t left[BUFFERSIZE];
-static int16_t right[BUFFERSIZE];
-static int16_t * const buffers[2] = { left, right };
-static int16_t interleaved_buffer[BUFFERSIZE * 2];
-static int is_interleaved = 0;
 State state;
 #define PI 3.141592654
 
@@ -103,6 +97,14 @@ QStat * qStat;
 
 #define OBSTACLECOUNT 10
 static Obstacle * obstacles[OBSTACLECOUNT];
+
+#define BUFFERSIZE 480
+#define SAMPLERATE 48000
+static int16_t left[BUFFERSIZE];
+static int16_t right[BUFFERSIZE];
+static int16_t * const buffers[2] = { left, right };
+static int16_t interleaved_buffer[BUFFERSIZE * 2];
+static int is_interleaved = 0;
 
 static void libopenmpt_example_logfunc( const char * message, void * userdata ) {
     (void)userdata;
@@ -160,8 +162,10 @@ void *music_thread(void *vargp) {
     int mod_err = OPENMPT_ERROR_OK;
     const char * mod_err_str = NULL;
     size_t count = 0;
+    #ifndef __EMSCRIPTEN__
     PaError pa_error = paNoError;
     PaStream * stream = 0;
+    #endif
 
     mod = openmpt_module_create_from_memory2( radix_mountain_king_mod_data, radix_mountain_king_mod_size, &libopenmpt_example_logfunc, NULL, &libopenmpt_example_errfunc, NULL, &mod_err, &mod_err_str, NULL );
     if (!mod) {
@@ -172,6 +176,7 @@ void *music_thread(void *vargp) {
     }
     openmpt_module_set_error_func( mod, NULL, NULL );
 
+    #ifndef __EMSCRIPTEN__
     pa_error = Pa_Initialize();
     if ( pa_error != paNoError ) {
         fprintf( stderr, "Error: %s\n", "Pa_Initialize() failed." );
@@ -197,6 +202,7 @@ void *music_thread(void *vargp) {
         fprintf( stderr, "Error: %s\n", "Pa_StartStream() failed." );
         *args.running = 0;
     }
+    #endif
 
     *args.mod = mod;
     *args.initialized = 1;
@@ -228,7 +234,7 @@ void *music_thread(void *vargp) {
                     openmpt_module_set_position_seconds(mod, 0);
                 }
             } else {
-
+                #ifndef __EMSCRIPTEN__
                 pa_error = is_interleaved ? Pa_WriteStream(stream, interleaved_buffer,
                                                                  (unsigned long) count)
                                                 : Pa_WriteStream(stream, buffers, (unsigned long) count);
@@ -240,6 +246,10 @@ void *music_thread(void *vargp) {
                     *args.running = 0;
                     pthread_exit(NULL);
                 }
+                #else
+                usleep((unsigned int) ((double) count/SAMPLERATE * 1000000));
+                #endif
+
             }
         }
     }
