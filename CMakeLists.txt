@@ -4,7 +4,7 @@ project(RunFleanceRun C)
 set(CMAKE_C_STANDARD 99)
 
 if( ${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
-        set(USE_FLAGS "-s USE_SDL=2")
+        set(USE_FLAGS "-s USE_SDL=2 -s ASYNCIFY=1 -O3")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${USE_FLAGS}")
         set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${USE_FLAGS}")
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${USE_FLAGS}")
