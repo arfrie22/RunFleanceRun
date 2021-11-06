@@ -321,7 +321,7 @@ void TickQuote(SDL_Renderer * renderer, STBTTF_Font * font) {
 
 Obstacle * GenerateObstacle(Animation* animations[]) {
     Obstacle * obstacle = malloc(sizeof(Obstacle));
-    obstacle->speed = (rand() % 250) / 100 + 2;
+    obstacle->speed = (rand() % 250) / 200 + 2;
     obstacle->type = rand() % 2;
     Animation * animation = malloc(sizeof(Animation));
     memcpy(animation, animations[obstacle->type], sizeof(Animation));
@@ -462,6 +462,7 @@ int main(int argc, char** argv) {
     uint8_t lane = 1;
     uint8_t ducking = 0;
     uint8_t jumping = 0;
+    uint32_t player_timer = 0;
 
     while (running) {
         curTime = SDL_GetTicks();
@@ -487,31 +488,35 @@ int main(int argc, char** argv) {
                     break;
 
                 case SDL_KEYDOWN:
-                    switch (e.key.keysym.sym) {
-                        case SDLK_ESCAPE:
-                        case SDLK_q:
-                            if (state == TITLE) {
-                                running = 0;
-                            } else {
-                                paused = !paused;
-                            }
-                            break;
-
-                        case SDLK_r:
-                            goto Start;
-                            break;
+                    if (e.key.keysym.sym == SDLK_r) {
+                        goto Start;
                     }
 
                     switch (state) {
                         case TITLE:
+                            switch (e.key.keysym.sym) {
+                                case SDLK_ESCAPE:
+                                case SDLK_q:
+                                    running = 0;
+                                    break;
+
+                                default:
+                                    fleance_sprite->animation = fleance_running_animation;
+                                    state = PLAY;
+                                    seek = 1;
+                                    break;
+                            }
                             if (e.key.keysym.sym != SDLK_r) {
-                                fleance_sprite->animation = fleance_running_animation;
-                                state = PLAY;
-                                seek = 1;
+
                             }
                             break;
                         case PLAY:
                             switch (e.key.keysym.sym) {
+                                case SDLK_ESCAPE:
+                                case SDLK_q:
+                                    paused = !paused;
+                                    break;
+
                                 case SDLK_LEFT:
                                 case SDLK_a:
                                     if (lane > 0) {
@@ -533,8 +538,8 @@ int main(int argc, char** argv) {
                                     if (!jumping) {
                                         fleance_sprite->rect.y = (HEIGHT - fleance_sprite->rect.h);
                                         ducking = 1;
-                                        fleance_ducking_animation->frame = fleance_running_animation->frame;
                                         fleance_sprite->animation = fleance_ducking_animation;
+                                        player_timer = 20;
                                     }
                                     break;
 
@@ -542,9 +547,8 @@ int main(int argc, char** argv) {
                                 case SDLK_w:
                                     if (!ducking) {
                                         jumping = 1;
-                                        fleance_running_animation->frame = fleance_ducking_animation->frame;
-                                        fleance_sprite->animation = fleance_running_animation;
                                         fleance_sprite->rect.y = (HEIGHT - fleance_sprite->rect.h);
+                                        player_timer = 20;
                                     }
                                     break;
                             }
@@ -572,6 +576,25 @@ int main(int argc, char** argv) {
                     } else {
                         IncFrameTo(fleance_sprite, 3);
                     }
+                }
+
+                if (jumping) {
+                    uint8_t modifier = player_timer/2 * (20-player_timer);
+                    fleance_sprite->rect.y = (HEIGHT - fleance_sprite->rect.h) - modifier;
+
+                    if (player_timer == 0) {
+                        fleance_sprite->rect.y = (HEIGHT - fleance_sprite->rect.h);
+                        jumping = 0;
+                    }
+
+                    player_timer -= 1;
+                } else if (ducking) {
+                    if (player_timer == 0) {
+                        fleance_running_animation->frame = fleance_ducking_animation->frame;
+                        fleance_sprite->animation = fleance_running_animation;
+                        ducking = 0;
+                    }
+                    player_timer -= 1;
                 }
 
                 if (TickSprite(background_sprite)) {
@@ -603,7 +626,6 @@ int main(int argc, char** argv) {
                         if (TickSprite(obstacles[i]->sprite)) {
                             IncFrame(obstacles[i]->sprite);
                         }
-                        RenderSprite(renderer, obstacles[i]->sprite);
                         if (obstacles[i]->sprite->rect.y >= HEIGHT) {
                             DestroyObstacle(obstacles[i]);
                             obstacles[i] = NULL;
@@ -620,8 +642,6 @@ int main(int argc, char** argv) {
                     }
                 }
 
-                // TODO ADD OBJ
-
 
                 if (paused) {
                     SDL_SetRenderDrawColor(renderer, 128, 0, 0, 255);
@@ -631,16 +651,16 @@ int main(int argc, char** argv) {
                     TickQuote(renderer, quoteFont);
                 }
 
-                SDL_Rect progress;
-                progress.x = 0;
-                progress.y = HEIGHT;
-                progress.h = 25;
-                progress.w = WIDTH;
-                SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-                SDL_RenderFillRect(renderer, &progress);
-                progress.w = WIDTH * (openmpt_module_get_position_seconds(mod)/openmpt_module_get_duration_seconds(mod));
-                SDL_SetRenderDrawColor(renderer, 128, 0, 0, 255);
-                SDL_RenderFillRect(renderer, &progress);
+                for (int i = 0; i < OBSTACLECOUNT; ++i) {
+                    if (obstacles[i] != NULL) {
+                        if (obstacles[i]->lane == lane && obstacles[i]->sprite->rect.y >= HEIGHT - 32 - obstacles[i]->sprite->rect.h) {
+                            if ((obstacles[i]->type && !ducking) || (!obstacles[i]->type && !jumping)) {
+                                state = GAMEOVER;
+                            }
+                        }
+                        break;
+                    }
+                }
 
                 break;
             case GAMEOVER:
@@ -655,7 +675,26 @@ int main(int argc, char** argv) {
                 break;
         }
 
+        if (state != TITLE) {
+            for (int i = 0; i < OBSTACLECOUNT; ++i) {
+                if (obstacles[i] != NULL) {
+                    RenderSprite(renderer, obstacles[i]->sprite);
+                }
+            }
+        }
+
         RenderSprite(renderer, fleance_sprite);
+
+        SDL_Rect progress;
+        progress.x = 0;
+        progress.y = HEIGHT;
+        progress.h = 25;
+        progress.w = WIDTH;
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderFillRect(renderer, &progress);
+        progress.w = WIDTH * (openmpt_module_get_position_seconds(mod)/openmpt_module_get_duration_seconds(mod));
+        SDL_SetRenderDrawColor(renderer, 128, 0, 0, 255);
+        SDL_RenderFillRect(renderer, &progress);
 
         SDL_RenderPresent(renderer);
     }
